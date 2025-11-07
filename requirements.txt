@@ -3,3 +3,4 @@ pdfplumber
 docxtpl
 google-generativeai
 python-dotenv
+streamlit

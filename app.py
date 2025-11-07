@@ -8,7 +8,7 @@ from main import (
 )
 
 st.set_page_config(page_title="Generador de Actas RRHH", page_icon="📄", layout="wide")
-st.title("📋 Generador de Actas de Descargo")
+st.title("📋 RRHH - Generador de Actas de Descargo AGP")
 
 # --- Subir PDF ---
 st.header("1️⃣ Cargar Citación")
