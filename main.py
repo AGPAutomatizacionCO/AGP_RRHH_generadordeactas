@@ -98,9 +98,9 @@ def extraer_datos_citacion(texto: str) -> dict:
     # === Fecha de la citación ===
     # Admite "de 2025" o "2025", con o sin puntos en am/pm
     m = re.search(
-        r"el\s+d[ií]a\s+(\d{1,2}\s+de\s+[a-zA-Zñ]+\s+(?:de\s+)?\d{4}\s+a\s+las\s+[0-9:.]+\s*(?:a\.?m\.?|p\.?m\.?)?)",
-        t,
-        re.IGNORECASE,
+    r"el\s+d[ií]a\s+([\d]{1,2}\s+de\s+[a-zA-ZñÑ]+\s+del?\s+\d{4}\s+a\s+las\s+[0-9:.\s]+(?:a\.?m\.?|p\.?m\.?))",
+    t,
+    re.IGNORECASE
     )
     fecha_citacion = m.group(1).strip() if m else "No encontrada"
 
@@ -118,7 +118,7 @@ def extraer_datos_citacion(texto: str) -> dict:
 
     # === Tipo de Falta (detiene al encontrar punto, coma o frase siguiente) ===
     m = re.search(
-        r"Tipo\s+de\s+Falta[:\-]?\s*([A-Za-zÁÉÍÓÚÑ\s]+?)(?:\.|,|las\s+conductas|según|$)",
+        r"Tipo\s+de\s+Falta\s*[:\-]?\s*([A-Za-zÁÉÍÓÚÑ\s]+?)(?:\.|,|las\s+conductas|según|$)",
         t,
         re.IGNORECASE,
     )
@@ -136,8 +136,6 @@ def extraer_datos_citacion(texto: str) -> dict:
         "tipo_falta": tipo_falta,
         "articulos": articulos,
     }
-
-
 
 
 # === PREGUNTAS BASE POR TIPO DE  ===
@@ -192,9 +190,9 @@ def preguntas_base_por_tipo(tipo: str) -> list:
             "¿Confirma usted que se presentó con un retardo en su hora de llegada de xxxx minutos el día xxxx?",
             "¿Tenía usted permiso para presentarse con un retardo de xxxx minutos el día xxxx?",
             "¿Tiene algún soporte que justifique el retraso de xxxx minutos en su hora de llegada el día xxxx?",
-            "¿Conoce el Reglamento Interno de Trabajo?",
             "¿Sabe usted que presentarse con un retraso puede ser considerado una falta grave?",
             "¿Sabe usted que está prohibido presentarse al puesto de trabajo con un retardo de hasta xxx minutos después de iniciada la jornada laboral?",
+            "¿Conoce el Reglamento Interno de Trabajo?",
             "¿Considera que cometió una falta?",
             "¿Quiere agregar algo más a la presente?"
         ]
@@ -204,8 +202,8 @@ def preguntas_base_por_tipo(tipo: str) -> list:
             "¿Puede explicar cómo ocurrió el daño del equipo o herramienta?",
             "¿Estaba siguiendo el procedimiento adecuado al momento del daño?",
             "¿Había reportado algún desperfecto o falla previa?",
-            "¿Conoce el Reglamento Interno de Trabajo?",
             "¿Sabe que debe cuidar y utilizar adecuadamente las herramientas e instalaciones de la empresa?",
+            "¿Conoce el Reglamento Interno de Trabajo?"
             "¿Considera que cometió una falta?",
             "¿Quiere agregar algo más a la presente diligencia?"
         ]
@@ -218,6 +216,97 @@ def preguntas_base_por_tipo(tipo: str) -> list:
             "¿Considera que cometió una falta?",
             "¿Quiere agregar algo más a la presente diligencia?"
         ]
+
+# === ORGANIZAR PREGUNTAS ===
+import unicodedata
+
+def normalizar(texto: str) -> str:
+    """Normaliza texto eliminando tildes, mayúsculas y signos."""
+    texto = texto.lower().strip()
+    texto = ''.join(
+        c for c in unicodedata.normalize('NFD', texto)
+        if unicodedata.category(c) != 'Mn'
+    )
+    return texto.replace("¿", "").replace("?", "")
+
+
+def organizar_preguntas(preguntas_base: list, preguntas_ia: list) -> list:
+    """
+    Organiza las preguntas en el orden:
+    1. Pregunta inicial (tiempo en la compañía)
+    2. Preguntas base (sin la inicial ni las finales)
+    3. Preguntas generadas por IA
+    4. Tres preguntas finales (en orden específico)
+    """
+    
+    # === 1. Definir preguntas finales en el orden EXACTO ===
+    finales_exactas = [
+        "¿Conoce el Reglamento Interno de Trabajo?",
+        "¿Considera que cometió una falta?",
+        "¿Quiere agregar algo más a la presente diligencia?"
+    ]
+    finales_norm = [normalizar(f) for f in finales_exactas]
+    
+    # === 2. Detectar la pregunta inicial ===
+    pregunta_inicial = None
+    for p in preguntas_base:
+        if "cuanto tiempo lleva" in normalizar(p):
+            pregunta_inicial = p
+            break
+    
+    # Si no se encontró, usar la primera pregunta como inicial
+    if not pregunta_inicial:
+        pregunta_inicial = preguntas_base[0] if preguntas_base else ""
+    
+    # === 3. Clasificar las preguntas base ===
+    preguntas_medias = []
+    preguntas_finales = []
+    
+    for p in preguntas_base:
+        p_norm = normalizar(p)
+        
+        # Saltar la pregunta inicial
+        if p == pregunta_inicial:
+            continue
+        
+        # Verificar si es una pregunta final
+        if p_norm in finales_norm:
+            preguntas_finales.append(p)
+        else:
+            preguntas_medias.append(p)
+    
+    # === 4. Construir el orden final ===
+    orden_final = []
+    
+    # Agregar pregunta inicial
+    if pregunta_inicial:
+        orden_final.append(pregunta_inicial)
+    
+    # Agregar preguntas base medias
+    orden_final.extend(preguntas_medias)
+    
+    # Agregar preguntas generadas por IA
+    orden_final.extend(preguntas_ia)
+    
+    # Agregar preguntas finales en el orden EXACTO definido
+    for final_exacta in finales_exactas:
+        # Buscar la versión real de esta pregunta en las detectadas
+        for p in preguntas_finales:
+            if normalizar(p) == normalizar(final_exacta):
+                orden_final.append(p)
+                break
+    
+    # === 5. Eliminar duplicados manteniendo el orden ===
+    visto = set()
+    resultado = []
+    
+    for p in orden_final:
+        key = normalizar(p)
+        if key not in visto:
+            resultado.append(p)
+            visto.add(key)
+    
+    return resultado
 
 
 # === GENERAR PREGUNTAS (actualizado) ===
@@ -268,11 +357,11 @@ Ejemplo de formato esperado:
         if not ai_qs:
             ai_qs = ["(La IA no generó preguntas adicionales correctamente.)"]
 
-        return base + ai_qs
+        return organizar_preguntas(base, ai_qs)
 
     except Exception as e:
         print("⚠️ Error con Gemini:", e)
-        return base
+        return organizar_preguntas(base, []) 
 
 # === GENERAR ACTA WORD ===
 def generar_acta(parsed: dict, preguntas: list):
@@ -286,10 +375,10 @@ def generar_acta(parsed: dict, preguntas: list):
             f"PREGUNTA:\n{i}. {p}\n"
             f"RESPUESTA:\n\n\n"
         )
-        bloque_preguntas += "_" * 80 + "\n\n"  # línea de separación visual
 
     contexto = {
         "nombre": parsed["nombre"],
+        "cedula": parsed["cedula"],
         "fecha_citacion": parsed["fecha_citacion"],
         "fecha_hecho": parsed["fecha_hecho"],
         "detalle": parsed["detalle"],
@@ -325,8 +414,10 @@ def main():
     print("📋 Datos extraídos:", datos)
 
     preguntas = generar_preguntas_gemini(datos)
+
     generar_acta(datos, preguntas)
 
 
+
 #if __name__ == "__main__":
-  # main()
+  # main() 
